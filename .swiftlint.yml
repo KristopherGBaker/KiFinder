@@ -1,0 +1,50 @@
+included:
+  - Sources
+  - Tests
+
+excluded:
+  - .build
+  - .swiftpm
+  - .worktrees
+  - docs
+  - node_modules
+  - public
+  - examples
+
+opt_in_rules:
+  - empty_count
+  - explicit_init
+  - fatal_error_message
+  - first_where
+  - multiline_parameters
+  - redundant_nil_coalescing
+  - sorted_first_last
+  - vertical_parameter_alignment_on_call
+
+cyclomatic_complexity:
+  warning: 18
+  error: 25
+
+function_body_length:
+  warning: 70
+  error: 120
+
+nesting:
+  type_level: 2
+
+identifier_name:
+  min_length:
+    warning: 2
+  excluded:
+    - id
+
+large_tuple:
+  warning: 4
+  error: 5
+
+force_cast: warning
+force_try: warning
+trailing_whitespace:
+  ignores_empty_lines: true
+
+reporter: "xcode"

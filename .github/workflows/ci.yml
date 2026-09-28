@@ -1,0 +1,81 @@
+name: CI
+
+# Runs the engine suite and the app unit suite on macOS. The UI suite (KiFinderUITests)
+# is intentionally NOT run: XCUITest needs an unlocked, logged-in session with a display,
+# which hosted runners do not provide.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    # macos-26 is GitHub's Apple-silicon (arm64) image shipping Xcode 26 / Swift 6.2 —
+    # required because the package pins swift-tools-version 6.2 and SWIFT_VERSION 6.2,
+    # and because bootstrap-vendor.sh fetches the osx-arm64 ONNX Runtime and
+    # bootstrap-fixtures.sh compiles the CoreML model with `xcrun coremlc`.
+    runs-on: macos-26
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      # --- Caches ---------------------------------------------------------------
+      - name: Cache Homebrew downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-${{ runner.os }}-xcodegen
+
+      # The ONNX Runtime dylib is gitignored and re-fetched by bootstrap-vendor.sh.
+      # Key on the pinned ORT version (1.27.0) so a version bump busts the cache.
+      - name: Cache ONNX Runtime dylib
+        uses: actions/cache@v4
+        with:
+          path: Sources/KionONNXEmbedder/Resources/libonnxruntime.*.dylib
+          key: onnxruntime-1.27.0
+
+      # The two face models are large, non-redistributable downloads. Key on the two
+      # sha256 constants from bootstrap-fixtures.sh so a model change busts the cache;
+      # a cache hit lets bootstrap-fixtures.sh's sha checks short-circuit the downloads.
+      - name: Cache face models
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Application Support/KiFinder/models
+          key: models-arcface-f3a6bc281e72f88862f5748b53be3d76b3b48f8f1ab1f4a537941bdc4e1b01da-adaface-c639ffc02233c72c10daf90f484e14bf570b7f70f55f0c0ee1ce3d284a04430b
+
+      # --- Bootstrap ------------------------------------------------------------
+      - name: Bootstrap ONNX Runtime
+        run: ./Scripts/bootstrap-vendor.sh
+
+      - name: Bootstrap fixtures + models
+        run: ./Scripts/bootstrap-fixtures.sh
+
+      # --- Engine suite (SwiftPM) ----------------------------------------------
+      - name: Engine tests (swift test)
+        run: |
+          set -o pipefail
+          swift test 2>&1 | tee swift-test.log
+
+      # --- App build + unit suite ----------------------------------------------
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Build app
+        run: |
+          set -o pipefail
+          xcodebuild -project KiFinder.xcodeproj -scheme KiFinder -destination platform=macOS build 2>&1 | tee build.log
+
+      - name: App unit tests (KiFinderTests only)
+        run: |
+          set -o pipefail
+          xcodebuild -project KiFinder.xcodeproj -scheme KiFinder -destination platform=macOS test -only-testing:KiFinderTests 2>&1 | tee unit-test.log
+
+      # --- Loud, fail-closed model-gated summary --------------------------------
+      - name: Model-gated skip summary
+        run: ./Scripts/ci-summary.sh swift-test.log

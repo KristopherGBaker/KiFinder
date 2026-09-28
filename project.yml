@@ -1,0 +1,97 @@
+name: KiFinder
+# Optional owner-local overrides: a gitignored `project.local.yml` merged in ONLY when
+# KIFINDER_LOCAL_SPEC is set (e.g. `KIFINDER_LOCAL_SPEC=true xcodegen generate`). It is the
+# place to set a real signing team for a signed local build without touching the shared
+# spec. With the variable unset the include is disabled, so a fork generates cleanly even
+# when the file is absent. See README → "Distribution & signing".
+include:
+  - path: project.local.yml
+    enable: ${KIFINDER_LOCAL_SPEC}
+options:
+  bundleIdPrefix: com.krisbaker
+  developmentRegion: en
+  knownRegions: [Base, en, ja]
+  deploymentTarget:
+    macOS: "15.0"
+settings:
+  base:
+    # Fork-friendly signing: no signing team is pinned here, so a fresh checkout builds and
+    # runs ad-hoc signed out of the box (`codesign -dv` → Signature=adhoc, TeamIdentifier=not
+    # set) with the app sandbox intact. CODE_SIGN_STYLE stays Automatic so that anyone who DOES
+    # want a signed build only has to supply their own team — do that via the gitignored
+    # `project.local.yml` (see the `include` above), never by editing this shared file.
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.2"
+    SWIFT_STRICT_CONCURRENCY: complete
+packages:
+  KionEnginePackage:
+    path: .
+targets:
+  KiFinder:
+    type: application
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: KiFinder
+        excludes:
+          - Resources
+      - path: KiFinder/Resources
+        buildPhase: resources
+    dependencies:
+      - package: KionEnginePackage
+        product: KionEngine
+      - package: KionEnginePackage
+        product: KionONNXEmbedder
+      - package: KionEnginePackage
+        product: KionVisionEmbedder
+      - package: KionEnginePackage
+        product: KionCoreMLEmbedder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.krisbaker.KiFinder
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_FILE: KiFinder/Info.plist
+        INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription: "KiFinder can add kept photos to your Photos library when you choose that export destination."
+        CODE_SIGN_ENTITLEMENTS: KiFinder/KiFinder.entitlements
+  KiFinderTests:
+    type: bundle.unit-test
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: KiFinderTests
+    dependencies:
+      - target: KiFinder
+      - package: KionEnginePackage
+        product: KionEngine
+      - package: KionEnginePackage
+        product: KionONNXEmbedder
+      - package: KionEnginePackage
+        product: KionVisionEmbedder
+      - package: KionEnginePackage
+        product: KionCoreMLEmbedder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.krisbaker.KiFinderTests
+        GENERATE_INFOPLIST_FILE: "YES"
+  KiFinderUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    deploymentTarget: "15.0"
+    sources:
+      - path: KiFinderUITests
+    dependencies:
+      - target: KiFinder
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.krisbaker.KiFinderUITests
+        GENERATE_INFOPLIST_FILE: "YES"
+schemes:
+  KiFinder:
+    build:
+      targets:
+        KiFinder: all
+    test:
+      gatherCoverageData: false
+      targets:
+        - KiFinderTests
+        - KiFinderUITests

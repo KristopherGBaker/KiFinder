@@ -1,0 +1,35 @@
+# Xcode / Swift
+.build/
+build/
+DerivedData/
+# XcodeGen-generated; project.yml is authoritative
+*.xcodeproj/
+# Owner-local XcodeGen overrides (e.g. a private DEVELOPMENT_TEAM); never committed.
+# Merged only when KIFINDER_LOCAL_SPEC is set — see project.yml's `include`.
+project.local.yml
+*.xcworkspace/xcuserdata/
+xcuserdata/
+*.xcuserstate
+.swiftpm/
+Package.resolved
+*.moved-aside
+
+# CocoaPods (only if ORT ends up via CocoaPods)
+Pods/
+
+# ONNX Runtime binaries — large (~85MB), vendored locally, NOT in git (like the model).
+# Stage them out-of-repo + read via build.extraReadDirs, or re-fetch; never commit.
+Vendor/
+*.xcframework/
+*.dylib
+Sources/KionONNXEmbedder/Resources/*.dylib
+
+# macOS
+.DS_Store
+
+# Personal data — never commit real photos, scan output, or enrollment profiles
+out/
+albums/
+*.zip
+# (test fixtures under fixtures/ are committed deliberately; see that dir)
+.derived-data/
