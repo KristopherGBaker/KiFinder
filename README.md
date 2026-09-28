@@ -4,6 +4,8 @@ KiFinder is a privacy-first macOS app that finds photos of one person in large, 
 Teach it a face from a few reference photos, drop in a folder or `.zip`, then keep or skip the
 matches with the keyboard and export the keepers.
 
+![KiFinder reviewing candidate photos: confident matches, photos worth a look, and a preview with detected faces outlined](https://krisbaker.com/assets/building/kifinder/review-candidates.png)
+
 Everything runs on your Mac. Detection, matching, and export happen on-device, with no account
 and no telemetry. The only network use is a one-time download of the face-model weights (see
 [Models](#models)).
