@@ -1,105 +1,109 @@
 # Architecture
 
-KiFinder is two layers: a platform-agnostic **engine** that does the face matching, and a
-**macOS app** that wraps it in a calm, keyboard-first review UI. A small CLI exposes the
-engine headlessly. Everything runs on-device; there is no network code.
+KiFinder has two layers: a platform-agnostic **engine** that does the face matching, and a
+**macOS app** that wraps it in a calm, keyboard-first review UI. A small CLI runs the engine
+without the app. Everything runs on-device. The only network code is the one-time model
+download during onboarding (`KiFinder/Onboarding/ModelDownloader.swift`).
 
 ```
-┌─────────────────────────────────────────────┐
-│ KiFinder (SwiftUI macOS app)              │  Enroll · Scan · Review · Export
-│   LiveTriageEngine  ──┐                      │
-│   SampleTriageEngine  │ (previews / UI tests)│
-└───────────────────────┼──────────────────────┘
-                        │ depends on
-┌───────────────────────▼──────────────────────┐
-│ KionEngine (Swift package, no UI)            │  detect → align → embed → match
-│   FaceEmbedder · ScanPipeline · FaceMatcher  │
-│   ProfileStore · Manifest · Models           │
-│   KionORTShim → ONNX Runtime (ArcFace)       │
-└──────────────────────────────────────────────┘
-        ▲
-        │ also driven headlessly by
-   KionCLI (enroll / scan / feedback / rescore)
+KiFinder (SwiftUI macOS app)          Enroll · Scan · Review · Export
+  LiveTriageEngine
+  SampleTriageEngine (previews, UI tests)
+        │ depends on
+        ▼
+KionEngine (Swift package, no UI)     detect → align → embed → match
+  FaceAligner · ScanPipeline · FaceMatcher
+  ProfileStore · Manifest · Models
+  FaceEmbeddingProvider (protocol)
+        ▲ implemented by
+        │
+  KionONNXEmbedder    ArcFace via ONNX Runtime (KionORTShim)
+  KionCoreMLEmbedder  AdaFace IR-18 via CoreML
+  KionVisionEmbedder  Apple Vision FeaturePrint
+
+KionCLI (enroll / scan / feedback / rescore) drives the engine headlessly.
 ```
 
 ## The matching pipeline
 
-For each photo, the engine runs the same sequence (`Sources/KionEngine/`):
+The engine runs the same steps for each photo (`Sources/KionEngine/`):
 
-1. **Decode** the image (`ScanPipeline`, ImageIO). Albums are a folder or a `.zip`;
-   `.zip`s are extracted to a temp/cache dir and walked recursively. HEIC / JPEG / PNG.
-2. **Detect & align** the face (`FaceEmbedder.alignedFace`), with graceful fallback:
-   - **Vision** — `VNDetectFaceRectangles` + `VNDetectFaceLandmarks` (primary).
-   - **Core Image** — `CIDetector` with eye/mouth positions (fallback).
-   - **Heuristic** — fixed canonical landmarks on a non-blank image (last resort; this
-     path yields no real bounding box).
-3. **Warp** to a 112×112 chip using a 5-point affine transform (eyes, nose, mouth corners)
+1. **Decode** the image (`ScanPipeline`, ImageIO). An album is a folder or a `.zip`. A `.zip`
+   is extracted to a temp/cache dir and walked recursively. Formats: HEIC, JPEG, PNG.
+2. **Detect and align** the face (`FaceAligner.alignedFace`). Each method falls back to the
+   next:
+   - **Vision** (primary): `VNDetectFaceRectangles` + `VNDetectFaceLandmarks`.
+   - **Core Image** (fallback): `CIDetector` with eye and mouth positions.
+   - **Heuristic** (last resort): fixed canonical landmarks on a non-blank image. This path
+     gives no real bounding box.
+3. **Warp** to a 112×112 chip with a 5-point affine transform (eyes, nose, mouth corners)
    onto ArcFace's canonical landmark positions.
-4. **Embed** the chip through the **ArcFace ResNet-100 ONNX** model via ONNX Runtime,
-   producing a **512-dimension** face embedding. (The model is fed raw planar RGB in
-   `[0,255]` — see the note in `FaceEmbedder.rgbInputTensor`.)
-5. **Match** against the enrolled profile (`FaceMatcher`): cosine similarity to the
-   reference embeddings (max-similarity), adjusted by a margin against any **negatives**,
-   then bucketed by the profile's `threshold` / `maybeMargin` into **keep / maybe / no**.
+4. **Embed** the chip with the selected backend, any `FaceEmbeddingProvider`: ArcFace
+   ResNet-100 (ONNX Runtime, 512 dimensions), AdaFace IR-18 (CoreML, 512 dimensions), or Apple
+   Vision FeaturePrint. ArcFace takes raw planar RGB in `[0,255]` (see
+   `FaceAligner.rgbInputTensor`).
+5. **Match** against the enrolled profile (`FaceMatcher`). The score is the max cosine
+   similarity to the reference embeddings, adjusted by a margin against any **negatives**. The
+   profile's `threshold` and `maybeMargin` then sort it into **keep / maybe / no**.
 
-A **quality gate** (min detection score / bounding-box area) drops low-confidence faces
+A **quality gate** (minimum detection score and bounding-box area) drops low-confidence faces
 before scoring.
 
 ## Detection geometry
 
-The detector reports each matched face's rectangle, normalized (`0…1`, top-left origin) in
-the image's **raw, un-oriented** pixel space. It rides along on `QualityMetrics`
-(`faceBoundingBox`) → the manifest → `Candidate`, and the lightbox maps it onto the
-displayed (EXIF-oriented) photo to draw the amber overlay. No detected face → no overlay.
+The detector reports each matched face's rectangle, normalized (`0…1`, top-left origin) in the
+image's **raw, un-oriented** pixel space. It travels on `QualityMetrics` (`faceBoundingBox`) →
+the manifest → `Candidate`. The lightbox maps it onto the displayed (EXIF-oriented) photo to
+draw the amber overlay. If no face is detected, there is no overlay.
 
 ## Profiles & feedback
 
 - A **`ProfileBundle`** holds a subject's reference embeddings, confirmed positives,
-  negatives, and thresholds. Enrollment embeds the reference photos and appends them; the
+  negatives, and thresholds. Enrollment embeds the reference photos and appends them. The
   reference set is the stable core.
-- **Feedback** (`confirm` / `reject`) appends to positives/negatives and **rescores from the
-  stored embeddings** — no re-embedding. This mirrors the semantics of the project's
-  original Python prototype: feedback only ever changes the *decision boundary*, never
-  the vectors already on disk.
-- **`ProfileStore`** persists all subjects' bundles as JSON.
+- **Feedback** (`confirm` / `reject`) appends to positives or negatives and **rescores from
+  the stored embeddings**, with no re-embedding. This matches the project's original Python
+  prototype: feedback only changes the *decision boundary*, never the vectors on disk.
+- **`ProfileStore`** saves every subject's bundle as JSON.
 
 ## Persistence & model versioning
 
-- The **`Manifest`** caches one `BestFace` (embedding + quality metrics + per-subject
+- The **`Manifest`** caches one `BestFace` (embedding, quality metrics, and per-subject
   results) per photo path, so re-scanning an album reuses embeddings.
-- Both the store and manifest are **stamped with the model id/version**; a mismatch forces
-  re-embedding (and surfaces as `ModelVersionMismatchError`), so embeddings are never mixed
-  across models.
+- The store and manifest are both **stamped with the model id and version**. A mismatch
+  forces re-embedding (and surfaces as `ModelVersionMismatchError`), so embeddings from
+  different models are never mixed.
 
 ## ONNX Runtime integration
 
-`KionEngine` links a vendored ONNX Runtime: the **`OnnxRuntime.xcframework`** (`Vendor/`)
-plus a bundled `libonnxruntime…dylib` resource, bridged through the C shim **`KionORTShim`**
-(`KionORTCreate` / `KionORTRun` / `KionORTDestroy`). The shim keeps the Swift side free of
-ORT headers. CoreML execution is enabled via a prepared temp dir.
+`KionONNXEmbedder` (the ArcFace backend) links a vendored ONNX Runtime: **`OnnxRuntime.xcframework`** (`Vendor/`) plus a
+bundled `libonnxruntime…dylib` resource. The C shim **`KionORTShim`** (`KionORTCreate` /
+`KionORTRun` / `KionORTDestroy`) bridges to it and keeps ORT headers out of the Swift code. `KionEngine` itself has no ONNX dependency.
+CoreML execution is enabled through a prepared temp dir.
 
-The model file itself is **not** in the repo; it's resolved from `KION_MODEL_PATH` or
+The ArcFace model file is **not** in the repo. It is loaded from `KION_MODEL_PATH` or
 `~/Library/Application Support/KiFinder/models/arcfaceresnet100-8.onnx` (see the README).
 
 ## App layer
 
-- **`LiveTriageEngine`** (`KiFinder/Engine/`) is the real, on-device `TriageEngine`: it
-  wraps `KionEngine`, streams live per-photo scan progress, records feedback, and copies
-  kept files on export (folder or Photos add-only, originals untouched).
-- **`SampleTriageEngine`** provides deterministic fixture data so SwiftUI previews and UI
+- **`LiveTriageEngine`** (`KiFinder/Engine/`) is the real, on-device `TriageEngine`. It wraps
+  `KionEngine`, streams per-photo scan progress, records feedback, and copies kept files on
+  export (to a folder, or add-only to Photos; originals are untouched).
+- **`SampleTriageEngine`** supplies deterministic fixture data, so SwiftUI previews and UI
   tests run without a model or real photos.
-- The UI follows `DESIGN.md`: `NavigationSplitView` + a trailing `.inspector` lightbox, real
-  `LazyVGrid` tiles, and keyboard-first culling (Space = Keep, Delete = Skip, ←/→). The
-  buckets surface as **Found matches** / **Worth a look** / **The rest**.
+- The UI follows `DESIGN.md`: `NavigationSplitView` with a trailing `.inspector` lightbox, real
+  `LazyVGrid` tiles, and keyboard-first culling (←/→ to move, Return = Keep, Delete = Skip, Space = preview). The
+  buckets appear as **Found matches** / **Worth a look** / **The rest**.
 
 ## Where to look in the code
 
 | Concern | Start here |
 |---------|-----------|
-| Detect / align / embed | `Sources/KionEngine/FaceEmbedder.swift` |
+| Detect / align | `Sources/KionEngine/FaceAligner.swift` |
+| Embedding backends | `Sources/KionONNXEmbedder/`, `Sources/KionCoreMLEmbedder/`, `Sources/KionVisionEmbedder/` |
 | Album scan & manifest | `Sources/KionEngine/ScanPipeline.swift` |
 | Scoring, buckets, feedback | `Sources/KionEngine/FaceMatcher.swift` |
 | Data model & JSON persistence | `Sources/KionEngine/Models.swift` |
 | App ↔ engine boundary | `KiFinder/Engine/TriageEngine.swift`, `LiveTriageEngine.swift` |
 | Review UI & lightbox | `KiFinder/Review/` |
-| Headless harness | `Sources/KionCLI/main.swift` |
+| Command-line tool | `Sources/KionCLI/main.swift` |

@@ -5,12 +5,12 @@ third-party components it builds on, their licenses, and where their notices are
 
 There are two categories:
 
-1. **Redistributed / linked components** — code that is compiled into or bundled with the
-   app when you build it. These carry the full upstream license text below.
-2. **Models downloaded at runtime** — face-embedding model weights that are **not** in this
+1. **Redistributed / linked components:** code that is compiled into or bundled with the
+   app when you build it. The full upstream license text for each is below.
+2. **Models downloaded at runtime:** face-embedding model weights that are **not** in this
    repository and are **not** redistributed by the author. `Scripts/bootstrap-fixtures.sh`
    (and the app's onboarding flow) fetch them into a local cache on your machine. Their
-   licenses and provenance are listed for reference; you obtain them directly from upstream.
+   licenses and provenance are listed for reference. You get them directly from upstream.
 
 ---
 
@@ -58,38 +58,38 @@ SOFTWARE.
 
 No model weights live in this repository. Each backend fetches its weights from upstream
 into a local cache (`~/Library/Application Support/KiFinder/models` or the app's sandbox
-container). The licenses below govern the weights themselves; check them before using the
+container). The licenses below govern the weights themselves. Check them before using the
 models for anything beyond personal / research use.
 
 ### ArcFace `arcfaceresnet100-8`
 
 - **License:** Apache-2.0 (SPDX: `Apache-2.0`) as tagged in the ONNX Model Zoo
-- **Source:** ONNX Model Zoo — https://huggingface.co/onnxmodelzoo/arcfaceresnet100-8
+- **Source:** ONNX Model Zoo, https://huggingface.co/onnxmodelzoo/arcfaceresnet100-8
 - **Provenance caveat:** The weights are trained on the **MS-Celeb-1M** dataset, which has
   been **withdrawn** by its original publisher. This is generally fine for personal or
-  research use, but you should review the dataset's status before any other use.
+  research use. Review the dataset's status before any other use.
 
 ### AdaFace IR-18 (CoreML)
 
 - **License:** MIT (SPDX: `MIT`)
-- **Source:** https://github.com/john-rocky/CoreML-Models — release `adaface-v1`
+- **Source:** https://github.com/john-rocky/CoreML-Models, release `adaface-v1`
   (`AdaFace_IR18.mlpackage.zip`)
-- **Provenance:** This is a CoreML conversion that, per its author, conforms to the license
-  of the original project, `mk-minchul/AdaFace` — https://github.com/mk-minchul/AdaFace (MIT).
+- **Provenance:** A CoreML conversion that, per its author, conforms to the license of the
+  original project, `mk-minchul/AdaFace` (https://github.com/mk-minchul/AdaFace, MIT).
 
 ### Apple Vision FeaturePrint
 
 - **What it is:** A face/image feature extractor provided by Apple's **Vision**
-  system framework. It ships with macOS — there is no separate download, no weights in this
-  repo, and nothing is redistributed by KiFinder. Its use is governed by the Apple SDK / OS terms.
+  system framework. It ships with macOS. There is no separate download, no weights in this
+  repo, and KiFinder redistributes nothing. The Apple SDK / OS terms govern its use.
 
 ---
 
 ## Build-time tools (not redistributed)
 
 These tools are used to build or lint the project. They are not linked into or shipped with
-the app, so no license text is reproduced here — see their own repositories.
+the app, so their license text is not reproduced here. See their own repositories.
 
-- **XcodeGen** — https://github.com/yonaskolb/XcodeGen (generates `KiFinder.xcodeproj` from
+- **XcodeGen:** https://github.com/yonaskolb/XcodeGen (generates `KiFinder.xcodeproj` from
   `project.yml`).
-- **SwiftLint** — https://github.com/realm/SwiftLint (lint/format).
+- **SwiftLint:** https://github.com/realm/SwiftLint (lint/format).

@@ -1,27 +1,27 @@
 # Contributing to KiFinder
 
-Thanks for your interest in KiFinder — a privacy-first, fully on-device macOS app for
-sorting photos of one specific person out of large albums. This guide covers everything
-you need to build, test, and propose changes.
+Thanks for your interest in KiFinder, a privacy-first macOS app that finds photos of one
+person in large albums, fully on-device. This guide covers how to build, test, and propose
+changes.
 
-By participating you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
+By taking part, you agree to follow our [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Prerequisites
 
-- **macOS 15+** (the app is built and tested on recent macOS; Apple silicon).
-- **Xcode 16+ / Swift 6.2.** The package pins `swift-tools-version: 6.2`
+- **macOS 15+** on Apple silicon. The app is built and tested on recent macOS.
+- **Xcode 26 / Swift 6.2.** The package pins `swift-tools-version: 6.2`
   (`SWIFT_VERSION: "6.2"`, `SWIFT_STRICT_CONCURRENCY: complete`), so you need a
   toolchain that ships Swift 6.2.
 - **[XcodeGen](https://github.com/yonaskolb/XcodeGen):** `brew install xcodegen`. The
-  `.xcodeproj` is *generated* from `project.yml` — it is never committed. Never hand-edit
-  the `.pbxproj`; edit `project.yml` and re-run `xcodegen generate`.
+  `.xcodeproj` is *generated* from `project.yml` and is never committed. Don't hand-edit
+  the `.pbxproj`. Edit `project.yml` and re-run `xcodegen generate`.
 - **SwiftLint (optional but recommended):** `brew install swiftlint`. The repo ships a
-  `.swiftlint.yml`; CI does not currently gate on it, but new code should be lint-clean.
+  `.swiftlint.yml`. CI does not gate on it yet, but new code should be lint-clean.
 
 ## First build (from a fresh clone)
 
-Two large, non-redistributable artifacts and one derived fixture are **gitignored**, so a
-fresh clone must bootstrap them before it can build or test. Run these in order:
+Two large, non-redistributable artifacts and one derived fixture are **gitignored**. A fresh
+clone must bootstrap them before it can build or test. Run these in order:
 
 ```sh
 ./Scripts/bootstrap-vendor.sh     # fetch the pinned, sha256-verified ONNX Runtime dylib
@@ -32,16 +32,15 @@ xcodebuild -project KiFinder.xcodeproj -scheme KiFinder -destination platform=ma
 xcodebuild -project KiFinder.xcodeproj -scheme KiFinder -destination platform=macOS test -only-testing:KiFinderTests
 ```
 
-> **One engine test is opt-in.** `AdaFaceEmbedder built from the uncompiled .mlpackage warms up and embeds successfully` only runs when `KION_ADAFACE_PACKAGE_PATH` points at an uncompiled `AdaFace_IR18.mlpackage` (the bootstrap installs only the compiled `.mlmodelc`), so it reports as *skipped* everywhere else — including CI, where `Scripts/ci-summary.sh` lists it as an expected skip and fails only on unexpected ones.
+> **One engine test is opt-in.** `AdaFaceEmbedder built from the uncompiled .mlpackage warms up and embeds successfully` runs only when `KION_ADAFACE_PACKAGE_PATH` points at an uncompiled `AdaFace_IR18.mlpackage`. The bootstrap installs only the compiled `.mlmodelc`, so the test reports as *skipped* everywhere else. That includes CI, where `Scripts/ci-summary.sh` lists it as an expected skip and fails only on unexpected ones.
 
-
-- `bootstrap-vendor.sh` downloads the pinned upstream ONNX Runtime (macOS arm64) release,
-  verifies its sha256, and stages the SwiftPM `.copy` resource dylib. It is idempotent
-  (`--force` to refetch).
+- `bootstrap-vendor.sh` downloads the pinned upstream ONNX Runtime release (macOS arm64),
+  verifies its sha256, and stages the SwiftPM `.copy` resource dylib. It is idempotent.
+  Use `--force` to refetch.
 - `bootstrap-fixtures.sh` (default mode) rebuilds `Tests/Fixtures/sample_album.zip` from
-  the committed `face_a.jpg`, then downloads and sha256-verifies the ~249 MB ArcFace ONNX
+  the committed `face_a.jpg`. It then downloads and sha256-verifies the ~249 MB ArcFace ONNX
   model and the ~42 MB AdaFace IR-18 CoreML model into
-  `~/Library/Application Support/KiFinder/models`. `--skip-model` builds only the zip;
+  `~/Library/Application Support/KiFinder/models`. `--skip-model` builds only the zip.
   `--skip-adaface` skips just the CoreML model.
 
 ## Running tests
@@ -52,61 +51,62 @@ There are **three** test targets, and they are not interchangeable:
 |-------|-----------|-------|-------|
 | **Engine** (SwiftPM) | `swift test` | 129 tests / 15 suites | Platform-agnostic matching engine. |
 | **App unit** | `xcodebuild … test -only-testing:KiFinderTests` | 519 tests / 77 suites | The SwiftUI app's logic. |
-| **UI** | `xcodebuild … test -only-testing:KiFinderUITests` | 32 tests | XCUITest — see caveats below. |
+| **UI** | `xcodebuild … test -only-testing:KiFinderUITests` | 32 tests | XCUITest. See the caveats below. |
 
 `xcodebuild … test` (no `-only-testing:`) runs the app unit **and** UI suites together.
 
 ### The engine suite needs the models
 
-`swift test` is **not** model-free, so a green run without the models is green for the
+`swift test` is **not** model-free. A green run without the models is green for the
 *wrong reason*:
 
 - `EmbeddingBaselineTests.embeddingBaselineUnchangedOnGenuineDetection` deliberately
-  **hard-fails** (it calls `Issue.record` and throws) when the ArcFace model is absent —
-  this check must never skip.
+  **hard-fails** (it calls `Issue.record` and throws) when the ArcFace model is absent.
+  This check must never skip.
 - **28 other tests are `.enabled(if: isModelAvailable)`-gated** and **skip silently** when
-  the model is missing, so the suite still passes while the embedding paths never execute.
+  the model is missing. The suite still passes, but the embedding paths never run.
 
-Always run `bootstrap-fixtures.sh` before trusting a green `swift test`. Continuous
-integration provisions both models (and caches them) precisely so these tests execute
-rather than skip — see `.github/workflows/ci.yml` and the loud summary step
-(`Scripts/ci-summary.sh`), which fails the job if any model-gated test skipped.
+Always run `bootstrap-fixtures.sh` before trusting a green `swift test`. CI provisions both
+models (and caches them) so these tests run instead of skipping. See
+`.github/workflows/ci.yml` and the summary step (`Scripts/ci-summary.sh`), which fails the
+job if any model-gated test skipped.
 
 ### UI test caveats (not runnable on hosted CI)
 
 `KiFinderUITests` drive the real app through `XCUIApplication`. They require:
 
-- an **unlocked, logged-in macOS session with an attached display** — hosted CI runners
-  are headless, so the UI suite cannot run there (CI runs engine + `KiFinderTests` only);
-- the **default DerivedData** location (the runner and app-under-test are sandboxed; the
-  UI harness encodes the exact container layout in
-  [`KiFinderUITests/HarnessPaths.swift`](KiFinderUITests/HarnessPaths.swift) — read it
-  before touching UI-test file I/O).
+- an **unlocked, logged-in macOS session with an attached display**. Hosted CI runners
+  are headless, so the UI suite can't run there. CI runs the engine suite and
+  `KiFinderTests` only.
+- the **default DerivedData** location. The runner and the app under test are sandboxed,
+  and the UI harness encodes the exact container layout in
+  [`KiFinderUITests/HarnessPaths.swift`](KiFinderUITests/HarnessPaths.swift). Read it
+  before touching UI-test file I/O.
 
 ### The `KION_*` test harness (DEBUG-only)
 
 The app honors a small set of `KION_*` launch environment hooks
 (`KION_TEST_SCAN`, `KION_LIBRARY_PICK`, `KION_BACKEND`, `KION_MODEL_PATH`,
-`KION_DEFAULTS_SUITE`, `KION_DYNAMIC_TYPE`) that let the UI tests inject sample data and
+`KION_DEFAULTS_SUITE`, `KION_DYNAMIC_TYPE`). They let the UI tests inject sample data and
 drive flows deterministically. These hooks are **compiled only in DEBUG**
-(`KiFinder/KionEnvironment.swift`); a release build ignores them entirely. The UI-test side
-of the contract — where the harness may read/write inside the sandbox — lives in
+(`KiFinder/KionEnvironment.swift`). A release build ignores them entirely. The UI-test side,
+which defines where the harness may read and write inside the sandbox, lives in
 [`KiFinderUITests/HarnessPaths.swift`](KiFinderUITests/HarnessPaths.swift).
 
 ## Signing
 
-Builds **ad-hoc sign by default** — with no `DEVELOPMENT_TEAM` set, `xcodebuild` produces a
-runnable, ad-hoc-signed app and the commands above succeed with no signing flags. If you
-want to run under your own Apple Developer team, use the local, env-enabled project include
-described in **README › Signing** — do not commit a team into `project.yml`.
+Builds are **ad-hoc signed by default**. With no `DEVELOPMENT_TEAM` set, `xcodebuild`
+produces a runnable, ad-hoc-signed app, and the commands above work with no signing flags.
+To run under your own Apple Developer team, use the local, env-enabled project include
+described in **README › Distribution and signing**. Don't commit a team into `project.yml`.
 
 ## Code style
 
-- **SwiftLint:** the repo's `.swiftlint.yml` is authoritative; keep new code warning-free.
+- **SwiftLint:** the repo's `.swiftlint.yml` is the authority. Keep new code warning-free.
 - **Swift 6 strict concurrency:** `SWIFT_STRICT_CONCURRENCY: complete` is on. Keep it clean
-  (zero concurrency warnings). Use `@Observable` + `@MainActor` for view/coordinator state
-  and `actor`s for long-lived services.
-- **Swift Testing, not XCTest** for the engine and app-logic suites (`import Testing`,
+  (zero concurrency warnings). Use `@Observable` + `@MainActor` for view and coordinator
+  state, and `actor`s for long-lived services.
+- **Swift Testing, not XCTest,** for the engine and app-logic suites (`import Testing`,
   `@Test`, `#expect`).
 - **Conventional Commits:** `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, …
   (e.g. `fix(review): keep no-match photos visible under per-person filtering`).
@@ -114,14 +114,14 @@ described in **README › Signing** — do not commit a team into `project.yml`.
 ## Proposing changes
 
 1. Open an **issue** to discuss anything non-trivial before you start.
-2. Fork, branch, and open a **pull request** against `main`. Keep PRs focused; include a
-   clear description and note how you exercised the change.
+2. Fork, branch, and open a **pull request** against `main`. Keep PRs focused. Include a
+   clear description and say how you tested the change.
 3. Make sure `swift test` and `xcodebuild … test -only-testing:KiFinderTests` pass locally
    (with the models provisioned).
 4. **Never let Xcode rewrite the string catalog.** `KiFinder/Localizable.xcstrings` is
-   **hand-managed**. Xcode's build phase can silently re-extract and reformat it (adding
-   untranslated "new" keys); if that happens, revert the catalog before committing any
-   change that does not intentionally touch copy.
+   **hand-managed**. Xcode's build phase can silently re-extract and reformat it, adding
+   untranslated "new" keys. If that happens, revert the catalog before you commit, unless
+   your change is meant to touch copy.
 
 ## License
 
