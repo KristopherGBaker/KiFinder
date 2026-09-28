@@ -57,10 +57,14 @@ jobs:
         run: ./Scripts/bootstrap-fixtures.sh
 
       # --- Engine suite (SwiftPM) ----------------------------------------------
+      # Serial on purpose: on the hosted runner's small VM (few cores, no Neural Engine,
+      # paravirtualized GPU), running the Vision/CoreML/ONNX model tests in parallel
+      # deadlocks and the step never finishes. Serially the suite takes about a minute.
       - name: Engine tests (swift test)
+        timeout-minutes: 15
         run: |
           set -o pipefail
-          swift test 2>&1 | tee swift-test.log
+          swift test --no-parallel 2>&1 | tee swift-test.log
 
       # --- App build + unit suite ----------------------------------------------
       - name: Generate Xcode project
@@ -72,6 +76,7 @@ jobs:
           xcodebuild -project KiFinder.xcodeproj -scheme KiFinder -destination platform=macOS build 2>&1 | tee build.log
 
       - name: App unit tests (KiFinderTests only)
+        timeout-minutes: 20
         run: |
           set -o pipefail
           xcodebuild -project KiFinder.xcodeproj -scheme KiFinder -destination platform=macOS test -only-testing:KiFinderTests 2>&1 | tee unit-test.log
