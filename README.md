@@ -1,5 +1,8 @@
 # KiFinder
 
+[![CI](https://github.com/KristopherGBaker/KiFinder/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/KristopherGBaker/KiFinder/actions/workflows/ci.yml)
+[![License: GPL-3.0-or-later](https://img.shields.io/badge/license-GPL--3.0--or--later-blue.svg)](LICENSE)
+
 KiFinder is a privacy-first macOS app that finds photos of one person in large, messy albums.
 Teach it a face from a few reference photos, drop in a folder or `.zip`, then keep or skip the
 matches with the keyboard and export the keepers.
